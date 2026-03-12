@@ -1,0 +1,363 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  owner
+  manager
+  cashier
+  super_admin
+}
+
+enum PaymentMethod {
+  cash
+  card
+}
+
+enum OrderPaymentStatus {
+  pending
+  paid
+  failed
+}
+
+enum PaymentProvider {
+  manual_cash
+  stripe_connect_mock
+}
+
+enum PaymentTransactionStatus {
+  pending
+  succeeded
+  failed
+}
+
+enum TimeEntryStatus {
+  clocked_in
+  clocked_out
+  edited
+}
+
+enum ConfigTruckStatus {
+  pending
+  applied
+  failed
+}
+
+enum ProductChangeAction {
+  created
+  updated
+  archived
+}
+
+model Company {
+  id                   String                 @id @default(cuid())
+  name                 String
+  slug                 String                 @unique
+  stripeAccountId      String?
+  stripeConnected      Boolean                @default(false)
+  stripeConnectionStatus String?
+  suspended            Boolean                @default(false)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  users                User[]
+  trucks               Truck[]
+  products             Product[]
+  employees            Employee[]
+  orders               Order[]
+  orderItems           OrderItem[]
+  timeEntries          TimeEntry[]
+  payRates             PayRate[]
+  truckLocations       TruckLocation[]
+  truckLocationHistory TruckLocationHistory[]
+  configVersions       ConfigVersion[]
+  configVersionTrucks  ConfigVersionTruck[]
+  productChangeQueue   ProductChangeQueue[]
+  auditLogs            AuditLog[]
+  paymentTransactions  PaymentTransaction[]
+  weeklyRevenue        CompanyWeeklyRevenue[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  companyId    String
+  email        String
+  passwordHash String
+  name         String
+  role         UserRole
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  editedTimeEntries TimeEntry[] @relation("TimeEntryEditor")
+  auditLogs     AuditLog[]
+
+  @@unique([email])
+  @@unique([companyId, email])
+  @@index([companyId])
+}
+
+model Truck {
+  id                   String                 @id @default(cuid())
+  companyId            String
+  name                 String
+  active               Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  company              Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees            Employee[]
+  orders               Order[]
+  timeEntries          TimeEntry[]
+  latestLocation       TruckLocation?
+  locationHistory      TruckLocationHistory[]
+  configVersionTrucks  ConfigVersionTruck[]
+
+  @@index([companyId])
+}
+
+model Product {
+  id                     String      @id @default(cuid())
+  companyId              String
+  name                   String
+  category               String
+  price                  Decimal     @db.Decimal(10, 2)
+  active                 Boolean     @default(true)
+  archived               Boolean     @default(false)
+  assignedTruckId        String?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+  company                Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orderItems             OrderItem[]
+  queuedChanges          ProductChangeQueue[]
+
+  @@index([companyId])
+  @@index([companyId, archived, active])
+}
+
+model Employee {
+  id               String     @id @default(cuid())
+  companyId        String
+  name             String
+  active           Boolean    @default(true)
+  title            String?
+  assignedTruckId  String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedTruck    Truck?     @relation(fields: [assignedTruckId], references: [id], onDelete: SetNull)
+  orders           Order[]
+  timeEntries      TimeEntry[]
+  payRates         PayRate[]
+
+  @@index([companyId])
+}
+
+model Order {
+  id             String        @id @default(cuid())
+  companyId      String
+  truckId        String
+  employeeId     String?
+  paymentMethod  PaymentMethod
+  paymentStatus  OrderPaymentStatus @default(pending)
+  subtotal       Decimal       @db.Decimal(10, 2)
+  paidAt         DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  truck          Truck         @relation(fields: [truckId], references: [id], onDelete: Restrict)
+  employee       Employee?     @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  items          OrderItem[]
+  paymentTransactions PaymentTransaction[]
+
+  @@index([companyId])
+  @@index([companyId, createdAt])
+}
+
+model OrderItem {
+  id                 String    @id @default(cuid())
+  companyId          String
+  orderId            String
+  productId          String?
+  productNameAtSale  String
+  unitPriceAtSale    Decimal   @db.Decimal(10, 2)
+  quantity           Int
+  lineTotalAtSale    Decimal   @db.Decimal(10, 2)
+  createdAt          DateTime  @default(now())
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order              Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product            Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([orderId])
+}
+
+model TimeEntry {
+  id             String          @id @default(cuid())
+  companyId      String
+  employeeId     String
+  truckId        String
+  clockIn        DateTime
+  clockOut       DateTime?
+  status         TimeEntryStatus
+  editedByUserId String?
+  editReason     String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee       Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  truck          Truck           @relation(fields: [truckId], references: [id], onDelete: Restrict)
+  editedByUser   User?           @relation("TimeEntryEditor", fields: [editedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([companyId, employeeId, clockOut])
+  @@index([truckId])
+}
+
+model PayRate {
+  id            String    @id @default(cuid())
+  companyId     String
+  employeeId    String
+  hourlyRate    Decimal   @db.Decimal(10, 2)
+  effectiveDate DateTime
+  createdAt     DateTime  @default(now())
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([companyId, employeeId, effectiveDate])
+}
+
+model TruckLocation {
+  truckId      String    @id
+  companyId    String
+  latitude     Decimal   @db.Decimal(10, 6)
+  longitude    Decimal   @db.Decimal(10, 6)
+  speed        Decimal?  @db.Decimal(10, 2)
+  heading      Decimal?  @db.Decimal(10, 2)
+  recordedAt   DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  truck        Truck     @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model TruckLocationHistory {
+  id          String    @id @default(cuid())
+  truckId      String
+  companyId    String
+  latitude     Decimal   @db.Decimal(10, 6)
+  longitude    Decimal   @db.Decimal(10, 6)
+  speed        Decimal?  @db.Decimal(10, 2)
+  heading      Decimal?  @db.Decimal(10, 2)
+  recordedAt   DateTime
+  createdAt    DateTime  @default(now())
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  truck        Truck     @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([truckId, recordedAt])
+}
+
+model ConfigVersion {
+  id            String               @id @default(cuid())
+  companyId     String
+  versionNumber Int
+  generatedAt   DateTime             @default(now())
+  releaseDate   DateTime
+  bundleJson    Json
+  createdAt     DateTime             @default(now())
+  company       Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  truckStatuses ConfigVersionTruck[]
+  queuedChanges ProductChangeQueue[]
+
+  @@unique([companyId, versionNumber])
+  @@index([companyId, generatedAt])
+}
+
+model ConfigVersionTruck {
+  id              String            @id @default(cuid())
+  configVersionId String
+  companyId       String
+  truckId         String
+  status          ConfigTruckStatus @default(pending)
+  acknowledgedAt  DateTime?
+  errorMessage    String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  configVersion   ConfigVersion     @relation(fields: [configVersionId], references: [id], onDelete: Cascade)
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  truck           Truck             @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@unique([configVersionId, truckId])
+  @@index([companyId, truckId])
+}
+
+model ProductChangeQueue {
+  id                    String              @id @default(cuid())
+  companyId             String
+  productId             String
+  action                ProductChangeAction
+  changedFields         Json
+  createdAt             DateTime            @default(now())
+  includedInConfigVersionId String?
+  company               Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product               Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  includedInConfigVersion ConfigVersion?    @relation(fields: [includedInConfigVersionId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, includedInConfigVersionId])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  companyId   String?
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String
+  details     Json?
+  createdAt   DateTime  @default(now())
+  company     Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  actorUser   User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model PaymentTransaction {
+  id                    String                   @id @default(cuid())
+  companyId             String
+  orderId               String
+  provider              PaymentProvider
+  providerTransactionId String?
+  amount                Decimal                  @db.Decimal(10, 2)
+  status                PaymentTransactionStatus
+  rawResponse           Json?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  company               Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order                 Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([orderId])
+}
+
+model CompanyWeeklyRevenue {
+  id             String    @id @default(cuid())
+  companyId      String
+  weekStart      DateTime
+  grossSales     Decimal   @db.Decimal(10, 2)
+  thresholdMet   Boolean
+  platformFeeDue Decimal   @db.Decimal(10, 2)
+  calculatedAt   DateTime  @default(now())
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, weekStart])
+  @@index([companyId, weekStart])
+}

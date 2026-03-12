@@ -1,0 +1,80 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+  background: #fff;
+  color: #111;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+form,
+section,
+nav,
+table,
+ul {
+  margin-bottom: 24px;
+}
+
+input,
+select,
+button,
+textarea {
+  font: inherit;
+  padding: 8px;
+  margin-top: 4px;
+}
+
+button {
+  cursor: pointer;
+}
+
+label {
+  display: block;
+  margin-bottom: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: left;
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card {
+  border: 1px solid #ccc;
+  padding: 16px;
+}
+
+.error {
+  color: #b00020;
+}
