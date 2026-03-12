@@ -64,4 +64,26 @@ describe("auth service", () => {
       expect(result.data.email).toBe("owner@example.com");
     }
   });
+
+  it("rejects duplicate registration emails cleanly", async () => {
+    prismaMock.company.findUnique.mockResolvedValue(null);
+    prismaMock.user.findFirst.mockResolvedValue({
+      id: "user_existing",
+      email: "owner@example.com"
+    });
+
+    const result = await registerCompany({
+      companyName: "Demo",
+      companySlug: "demo-2",
+      ownerName: "Owner",
+      email: "owner@example.com",
+      password: "password123"
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(409);
+      expect(result.error).toBe("Email already exists");
+    }
+  });
 });
